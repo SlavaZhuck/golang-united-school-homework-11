@@ -1,11 +1,8 @@
 package batch
 
 import (
-	"context"
-	"log"
+	"sync"
 	"time"
-
-	"golang.org/x/sync/semaphore"
 )
 
 type user struct {
@@ -18,27 +15,22 @@ func getOne(id int64) user {
 }
 
 func getBatch(n int64, pool int64) (res []user) {
-	ctx := context.TODO()
-	sem := semaphore.NewWeighted(pool)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, pool)
+
+	//ouput array
 	var temp = make([]user, n, n)
 
 	for i := 0; int64(i) < n; i++ {
-		// When maxWorkers goroutines are in flight, Acquire blocks until one of the
-		// workers finishes.
-		if err := sem.Acquire(ctx, 1); err != nil {
-			log.Printf("Failed to acquire semaphore: %v", err)
-			break
-		}
+		wg.Add(1)
+		sem <- struct{}{}
 
 		go func(i int64) {
-			defer sem.Release(1)
-			temp[i] = getOne(int64(i))
+			temp[i] = getOne(i)
+			<-sem
+			wg.Done()
 		}(int64(i))
 	}
-
-	if err := sem.Acquire(ctx, pool); err != nil {
-		log.Printf("Failed to acquire semaphore: %v", err)
-	}
-
+	wg.Wait()
 	return temp
 }
